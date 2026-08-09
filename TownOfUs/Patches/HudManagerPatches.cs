@@ -60,13 +60,6 @@ public static class HudManagerPatches
 
     private static void RefreshUIAnchors()
     {
-        ResolutionManager.ResolutionChanged.Invoke(
-            (float)Screen.width / Screen.height,
-            Screen.width,
-            Screen.height,
-            Screen.fullScreen
-        );
-
         foreach (var ap in Object.FindObjectsOfType<AspectPosition>())
             ap.AdjustPosition();
     }
