@@ -58,48 +58,45 @@ public static class HudManagerPatches
     public static bool Zooming;
     public static bool CamouflageCommsEnabled;
 
-    private static void RefreshUIAnchors()
-    {
-        ResolutionManager.ResolutionChanged.Invoke(
-            (float)Screen.width / Screen.height,
-            Screen.width,
-            Screen.height,
-            Screen.fullScreen
-        );
-
-        foreach (var ap in Object.FindObjectsOfType<AspectPosition>())
-            ap.AdjustPosition();
-    }
-
     public static void AdjustCameraSize(float size)
     {
+        var mainCamera = Camera.main;
+        if (mainCamera)
+        {
+            mainCamera.orthographicSize = size;
+        }
+
+        if (size <= 3f)
+        {
+            Zooming = false;
+        }
+        else
+        {
+            Zooming = true;
+        }
+
         if (!HudManager.InstanceExists)
         {
             return;
         }
 
         var instance = HudManager.Instance;
-        Camera.main?.orthographicSize = size;
-
-        instance.UICamera?.orthographicSize = size;
-
-        if (size <= 3f)
+        if (!Zooming)
         {
-            Zooming = false;
             instance.ShadowQuad.gameObject.SetActive(!PlayerControl.LocalPlayer.Data.IsDead);
         }
         else
         {
-            Zooming = true;
             instance.ShadowQuad.gameObject.SetActive(false);
         }
 
-        ZoomButton.transform.Find("Inactive").GetComponent<SpriteRenderer>().sprite =
-            Zooming ? TouAssets.ZoomPlus.LoadAsset() : TouAssets.ZoomMinus.LoadAsset();
-        ZoomButton.transform.Find("Active").GetComponent<SpriteRenderer>().sprite =
-            Zooming ? TouAssets.ZoomPlusActive.LoadAsset() : TouAssets.ZoomMinusActive.LoadAsset();
-
-        RefreshUIAnchors();
+        if (ZoomButton)
+        {
+            ZoomButton.transform.Find("Inactive").GetComponent<SpriteRenderer>().sprite =
+                Zooming ? TouAssets.ZoomPlus.LoadAsset() : TouAssets.ZoomMinus.LoadAsset();
+            ZoomButton.transform.Find("Active").GetComponent<SpriteRenderer>().sprite =
+                Zooming ? TouAssets.ZoomPlusActive.LoadAsset() : TouAssets.ZoomMinusActive.LoadAsset();
+        }
     }
 
     public static void ButtonClickZoom()
@@ -134,7 +131,17 @@ public static class HudManagerPatches
 
     public static void ResetZoom()
     {
-        ZoomButton.SetActive(false);
+        if (ZoomButton && ZoomButton.activeSelf)
+        {
+            ZoomButton.SetActive(false);
+        }
+
+        var mainCamera = Camera.main;
+        if (!Zooming && (!mainCamera || Mathf.Approximately(mainCamera.orthographicSize, 3f)))
+        {
+            return;
+        }
+
         AdjustCameraSize(3f);
     }
 

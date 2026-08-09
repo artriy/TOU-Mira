@@ -1096,23 +1096,20 @@ public static class TeamChatPatches
         }
         MergedBoundsY = Mathf.Min(0f, -num + instance.scroller.Hitbox.bounds.size.y + -0.3f);
 
-        var list = new Il2CppSystem.Collections.Generic.List<PoolableBehavior>();
         if (updatePublic)
         {
-            PublicChatBubbles.Do(x => list.Add(x));
-            PublicChatPool = list;
+            PublicChatPool.Clear();
+            PublicChatBubbles.Do(x => PublicChatPool.Add(x));
         }
 
-        list.Clear();
         if (updatePrivate)
         {
-            PrivateChatBubbles.Do(x => list.Add(x));
-            PrivateChatPool = list;
+            PrivateChatPool.Clear();
+            PrivateChatBubbles.Do(x => PrivateChatPool.Add(x));
         }
 
-        list.Clear();
-        MergedChatBubbles.Select(x => x.Bubble).Do(x => list.Add(x));
-        MergedChatPool = list;
+        MergedChatPool.Clear();
+        MergedChatBubbles.Select(x => x.Bubble).Do(x => MergedChatPool.Add(x));
 
         if (!LocalSettingsTabSingleton<TouLocalTabPreferences>.Instance.SeparateChatBubbles.Value)
         {

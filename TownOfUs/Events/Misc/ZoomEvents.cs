@@ -1,6 +1,6 @@
+using HarmonyLib;
 using MiraAPI.Events;
 using MiraAPI.Events.Vanilla.Gameplay;
-using MiraAPI.Events.Vanilla.Meeting;
 using TownOfUs.Patches;
 using TownOfUs.Roles;
 using TownOfUs.Roles.Other;
@@ -46,10 +46,14 @@ public static class ZoomEvents
         }
     }
 
-    [RegisterEvent]
-    public static void StartMeetingEventHandler(StartMeetingEvent _)
+}
+
+[HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.Start))]
+public static class MeetingHudStartZoomPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
     {
         HudManagerPatches.ResetZoom();
-        HudManagerPatches.ZoomButton.SetActive(false);
     }
 }
