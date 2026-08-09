@@ -35,9 +35,6 @@ public static class TeamChatPatches
     public static List<ChatBubble> PublicChatBubbles = [];
     public static List<ChatBubble> PrivateChatBubbles = [];
     public static List<MergedBubble> MergedChatBubbles = [];
-    public static Il2CppSystem.Collections.Generic.List<PoolableBehavior> PublicChatPool = new();
-    public static Il2CppSystem.Collections.Generic.List<PoolableBehavior> PrivateChatPool = new();
-    public static Il2CppSystem.Collections.Generic.List<PoolableBehavior> MergedChatPool = new();
 
     internal const string PrivateBubbleName = "Private_ChatBubble";
     internal const string PublicBubbleName = "Public_ChatBubble";
@@ -47,9 +44,6 @@ public static class TeamChatPatches
         PublicChatBubbles.Clear();
         PrivateChatBubbles.Clear();
         MergedChatBubbles.Clear();
-        PublicChatPool.Clear();
-        PrivateChatPool.Clear();
-        MergedChatPool.Clear();
     }
 
     /// <summary>
@@ -815,7 +809,6 @@ public static class TeamChatPatches
             PublicChatItems.gameObject.SetActive(false);
             MergedChatItems.gameObject.SetActive(true);
             instance.scroller.Inner = MergedChatItems;
-            instance.chatBubblePool.activeChildren = MergedChatPool;
             instance.scroller.SetYBoundsMin(MergedBoundsY);
         }
         else if (TeamChatActive)
@@ -824,7 +817,6 @@ public static class TeamChatPatches
             PublicChatItems.gameObject.SetActive(false);
             PrivateChatItems.gameObject.SetActive(true);
             instance.scroller.Inner = PrivateChatItems;
-            instance.chatBubblePool.activeChildren = PrivateChatPool;
             instance.scroller.SetYBoundsMin(PrivateBoundsY);
         }
         else
@@ -833,7 +825,6 @@ public static class TeamChatPatches
             MergedChatItems.gameObject.SetActive(false);
             PrivateChatItems.gameObject.SetActive(false);
             instance.scroller.Inner = PublicChatItems;
-            instance.chatBubblePool.activeChildren = PublicChatPool;
             instance.scroller.SetYBoundsMin(PublicBoundsY);
         }
     }
@@ -1037,11 +1028,12 @@ public static class TeamChatPatches
             PublicChatItems.gameObject.SetActive(true);
             if (PublicChatItems.childCount > 20)
             {
+                var publicBubble = PublicChatBubbles[0];
+                var mergedBubble = MergedChatBubbles.First(x => x.IsPublic);
                 PublicChatBubbles.RemoveAt(0);
-                var mergedBubble = MergedChatBubbles.FirstOrDefault(x => x.IsPublic)!;
                 MergedChatBubbles.Remove(mergedBubble);
-                PublicChatItems.transform.GetChild(0).gameObject.DeepDestroy();
-                MergedChatItems.transform.FindChild(PublicBubbleName).gameObject.DeepDestroy();
+                instance.chatBubblePool.Reclaim(publicBubble);
+                instance.chatBubblePool.Reclaim(mergedBubble.Bubble);
             }
             for (int i = PublicChatBubbles.Count - 1; i >= 0; i--)
             {
@@ -1059,11 +1051,12 @@ public static class TeamChatPatches
             PrivateChatItems.gameObject.SetActive(true);
             if (PrivateChatItems.childCount > 20)
             {
+                var privateBubble = PrivateChatBubbles[0];
+                var mergedBubble = MergedChatBubbles.First(x => !x.IsPublic);
                 PrivateChatBubbles.RemoveAt(0);
-                var mergedBubble = MergedChatBubbles.FirstOrDefault(x => !x.IsPublic)!;
                 MergedChatBubbles.Remove(mergedBubble);
-                PrivateChatItems.transform.GetChild(0).gameObject.DeepDestroy();
-                MergedChatItems.transform.FindChild(PrivateBubbleName).gameObject.DeepDestroy();
+                instance.chatBubblePool.Reclaim(privateBubble);
+                instance.chatBubblePool.Reclaim(mergedBubble.Bubble);
             }
 
             num = 0f;
@@ -1096,23 +1089,6 @@ public static class TeamChatPatches
         }
         MergedBoundsY = Mathf.Min(0f, -num + instance.scroller.Hitbox.bounds.size.y + -0.3f);
 
-        var list = new Il2CppSystem.Collections.Generic.List<PoolableBehavior>();
-        if (updatePublic)
-        {
-            PublicChatBubbles.Do(x => list.Add(x));
-            PublicChatPool = list;
-        }
-
-        list.Clear();
-        if (updatePrivate)
-        {
-            PrivateChatBubbles.Do(x => list.Add(x));
-            PrivateChatPool = list;
-        }
-
-        list.Clear();
-        MergedChatBubbles.Select(x => x.Bubble).Do(x => list.Add(x));
-        MergedChatPool = list;
 
         if (!LocalSettingsTabSingleton<TouLocalTabPreferences>.Instance.SeparateChatBubbles.Value)
         {
@@ -1120,7 +1096,6 @@ public static class TeamChatPatches
             PublicChatItems.gameObject.SetActive(false);
             MergedChatItems.gameObject.SetActive(true);
             instance.scroller.Inner = MergedChatItems;
-            instance.chatBubblePool.activeChildren = MergedChatPool;
             instance.scroller.SetYBoundsMin(MergedBoundsY);
         }
         else if (TeamChatActive)
@@ -1129,7 +1104,6 @@ public static class TeamChatPatches
             PublicChatItems.gameObject.SetActive(false);
             PrivateChatItems.gameObject.SetActive(true);
             instance.scroller.Inner = PrivateChatItems;
-            instance.chatBubblePool.activeChildren = PrivateChatPool;
             instance.scroller.SetYBoundsMin(PrivateBoundsY);
         }
         else
@@ -1138,7 +1112,6 @@ public static class TeamChatPatches
             MergedChatItems.gameObject.SetActive(false);
             PrivateChatItems.gameObject.SetActive(false);
             instance.scroller.Inner = PublicChatItems;
-            instance.chatBubblePool.activeChildren = PublicChatPool;
             instance.scroller.SetYBoundsMin(PublicBoundsY);
         }
     }
@@ -1335,7 +1308,7 @@ public static class TeamChatPatches
 		{
 			ChatController.Logger.Error(message.ToString());
             __instance.chatBubblePool.Reclaim(pooledBubble);
-            clonedBubble.gameObject.DeepDestroy();
+            __instance.chatBubblePool.Reclaim(clonedBubble);
 		}
         return false;
 	}
@@ -1372,7 +1345,7 @@ public static class TeamChatPatches
 		{
 			ChatController.Logger.Error(message.ToString());
             __instance.chatBubblePool.Reclaim(pooledBubble);
-            clonedBubble.gameObject.DeepDestroy();
+            __instance.chatBubblePool.Reclaim(clonedBubble);
 		}
         return false;
 	}
