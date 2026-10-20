@@ -13,7 +13,7 @@ public static class FirstDeadPatch
 
     public static void Postfix(PlayerControl __instance, DeathReason reason)
     {
-        if (!SpectatorRole.TrackedSpectators.Contains(__instance.Data.PlayerName))
+        if (!SpectatorRole.TrackedSpectators.Contains(__instance.PlayerId))
         {
             if (!FirstRoundPlayerNames.Contains(__instance.Data.PlayerName) && HudManagerHelper.Instance.CurrentRound == 1)
             {

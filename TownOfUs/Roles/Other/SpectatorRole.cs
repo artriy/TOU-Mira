@@ -14,7 +14,7 @@ public sealed class SpectatorRole(IntPtr cppPtr) : RoleBehaviour(cppPtr), ITownO
     public bool? ForceShowRoleOnWiki => TrackedSpectators.HasAny() ? true : null;
     private Minigame _hauntMenu = null!;
 
-    public static readonly HashSet<string> TrackedSpectators = [];
+    public static readonly HashSet<byte> TrackedSpectators = [];
     public static readonly List<PlayerControl> TrackedPlayers = [];
     public static bool FixedCam;
     public bool IsDraftable => false;
@@ -205,7 +205,7 @@ public sealed class SpectatorRole(IntPtr cppPtr) : RoleBehaviour(cppPtr), ITownO
         foreach (var player in PlayerControl.AllPlayerControls)
 
         {
-            if (!TrackedSpectators.Contains(player.Data.PlayerName))
+            if (!TrackedSpectators.Contains(player.PlayerId))
             {
                 TrackedPlayers.Add(player);
             }

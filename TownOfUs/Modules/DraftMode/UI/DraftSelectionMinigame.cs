@@ -29,6 +29,11 @@ namespace TownOfUs.Modules.DraftMode
         private ushort[] _offeredRoleIds;
         private string[] _offeredRoleNames;
         private bool _hasPicked;
+        private string _sessionId;
+        private int _turnNumber;
+        private int _offerRevision;
+        public bool ShufflePending { get; set; }
+        public bool CanRequestShuffle => _cardsReady && !_hasPicked && !ShufflePending;
         private TextMeshPro _timerText;
         private GameObject _tooltipRoot;
         private TextMeshPro _tooltipText;
@@ -207,7 +212,7 @@ namespace TownOfUs.Modules.DraftMode
             _timerTrack.SetActive(true);
             _timerFill.SetActive(true);
 
-            float duration = Mathf.Max(1f, DraftManager.TurnDuration);
+            float duration = Mathf.Max(1f, DraftManager.GetStateForPlayer(TargetPickerId)?.TurnDuration ?? 1f);
             float progress = Mathf.Clamp01(secondsLeft / duration);
             float width = Mathf.Max(0.03f, TimerProgressWidth * progress);
             _timerFill.transform.localScale = new Vector3(width, urgent ? 0.075f : 0.055f, 1f);
@@ -219,13 +224,6 @@ namespace TownOfUs.Modules.DraftMode
                     ? new Color(1f, 0.22f, 0.22f, 0.96f)
                     : new Color(1f, 0.82f, 0.12f, 0.92f);
             }
-        }
-
-        [HideFromIl2Cpp]
-        public void CacheOfferedRoles(ushort[] offeredRoleIds, string[] offeredRoleNames = null!)
-        {
-            _offeredRoleIds = offeredRoleIds ?? Array.Empty<ushort>();
-            _offeredRoleNames = offeredRoleNames ?? Array.Empty<string>();
         }
 
         public static void Show(ushort[] roleIds, string[] roleNames = null!)
@@ -240,7 +238,10 @@ namespace TownOfUs.Modules.DraftMode
             Instance._offeredRoleNames = roleNames ?? Array.Empty<string>();
             Instance._hasPicked = false;
             Instance._cardsReady = false;
-            Instance._localTimeLeft = -1f;
+            var state = DraftManager.GetStateForPlayer(TargetPickerId);
+            Instance._sessionId = DraftManager.SessionId;
+            Instance._turnNumber = state?.TurnNumber ?? 0;
+            Instance._offerRevision = state?.OfferRevision ?? 0;
             DraftStatusOverlay.SetState(OverlayState.BackgroundOnly);
             Instance.BuildScreen();
         }
@@ -714,6 +715,8 @@ namespace TownOfUs.Modules.DraftMode
         private static IEnumerator CoAnimateCards(Transform rolesHolder, float cardScale, bool useGrid, int totalCards)
         {
             if (rolesHolder == null) yield break;
+            var owner = Instance;
+            if (owner == null) yield break;
             int cols = Mathf.CeilToInt(totalCards / 2f);
 
             for (int i = 0; i < rolesHolder.childCount; i++)
@@ -729,8 +732,9 @@ namespace TownOfUs.Modules.DraftMode
             }
 
             yield return CoWaitForSharedReadyGate(totalCards);
-            if (Instance != null) Instance._cardsReady = true;
-            DraftNetworkHelper.NotifyPickerReady();
+            if (owner == null || Instance != owner || !DraftManager.IsCurrentOffer(owner._sessionId, TargetPickerId,
+                    owner._turnNumber, owner._offerRevision)) yield break;
+            owner._cardsReady = true;
         }
 
         private static IEnumerator CoWaitForSharedReadyGate(int totalCards)
@@ -799,7 +803,6 @@ namespace TownOfUs.Modules.DraftMode
             const float c1 = 1.70158f, c3 = c1 + 1f;
             return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
         }
-        private float _localTimeLeft = -1f;
         private bool _cardsReady;
         private int _lastDisplayedSeconds = -1;
         private bool _lastTimerUrgent;
@@ -821,17 +824,9 @@ namespace TownOfUs.Modules.DraftMode
                 }
                 else
                 {
-                    int secs;
-                    if (AmongUsClient.Instance.AmHost)
-                    {
-                        secs = Mathf.Max(0, Mathf.CeilToInt(DraftManager.TurnTimeLeft));
-                    }
-                    else
-                    {
-                        if (_localTimeLeft < -0.5f) _localTimeLeft = DraftManager.TurnDuration;
-                        if (_localTimeLeft > 0f) _localTimeLeft -= Time.deltaTime;
-                        secs = Mathf.Max(0, Mathf.CeilToInt(_localTimeLeft));
-                    }
+                    var state = DraftManager.GetStateForPlayer(TargetPickerId);
+                    var remaining = state?.TurnTimeLeft ?? 0f;
+                    int secs = Mathf.Max(0, Mathf.CeilToInt(remaining));
 
                     bool urgent = secs <= 5;
                     if (secs != _lastDisplayedSeconds || urgent != _lastTimerUrgent)
@@ -847,10 +842,7 @@ namespace TownOfUs.Modules.DraftMode
                     float timerPulse = urgent ? 1f + Mathf.Sin(Time.time * 10f) * 0.08f : 1f;
                     _timerText.transform.localScale = Vector3.one * timerPulse;
 
-                    float timeForBar = AmongUsClient.Instance.AmHost
-                        ? DraftManager.TurnTimeLeft
-                        : _localTimeLeft;
-                    UpdateTimerProgressLine(timeForBar, urgent);
+                    UpdateTimerProgressLine(remaining, urgent);
                 }
             }
         }
@@ -875,23 +867,11 @@ namespace TownOfUs.Modules.DraftMode
             if (localState == null || localState.HasPicked || !localState.IsPickingNow)
                 return;
 
-            if (localState.PendingPickTurnNumber != DraftManager.CurrentTurnNumber)
+            if (!DraftManager.IsCurrentOffer(_sessionId, localPlayer.PlayerId, _turnNumber, _offerRevision))
                 return;
-
-            var localSlot = DraftManager.GetSlotForPlayer(localPlayer.PlayerId);
-            if (localSlot < 0)
-                return;
-
-            if (localState.PendingPickIndex != 255 && localState.PendingPickIndex != index)
-            {
-                localState.PendingPickIndex = 255;
-                localState.PendingPickRoleId = 0;
-            }
 
             _hasPicked = true;
             ushort roleId = randomPick ? (ushort)0 : _offeredRoleIds[index];
-            if (roleId != 0)
-                DraftStatusOverlay.NotifyLocalPlayerPicked(roleId);
             DraftNetworkHelper.SendPickToHost(index, roleId, TargetPickerId);
         }
 
@@ -906,13 +886,15 @@ namespace TownOfUs.Modules.DraftMode
                 : null;
 
             var roleColor = roleBehaviour != null ? roleBehaviour.TeamColor : Color.white;
-            Coroutines.Start(CoShowPickNotification(roleName, roleColor));
+            Coroutines.Start(CoShowPickNotification(DraftManager.SessionId, roleId, roleName, roleColor));
         }
 
-        private static IEnumerator CoShowPickNotification(string roleName, Color roleColor)
+        private static IEnumerator CoShowPickNotification(string sessionId, ushort roleId, string roleName, Color roleColor)
         {
             yield return new WaitForSeconds(1.3f);
-            if (HudManager.Instance == null) yield break;
+            var state = PlayerControl.LocalPlayer != null ? DraftManager.GetStateForPlayer(PlayerControl.LocalPlayer.PlayerId) : null;
+            if (HudManager.Instance == null || !DraftManager.IsDraftActive || DraftManager.IsRecapping ||
+                DraftManager.SessionId != sessionId || state == null || !state.HasPicked || state.ChosenRoleId != roleId) yield break;
 
             string hex = ColorUtility.ToHtmlStringRGB(roleColor);
 

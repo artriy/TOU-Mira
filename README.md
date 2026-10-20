@@ -49,6 +49,7 @@ An [Among Us](https://store.steampowered.com/app/945360/Among_Us) mod based on T
   - [Windows Guides (Epic, Itch, MS Store, Steam)](https://au-avengers.github.io/docs.toum.gg/docs/category/windows-install)
   - [Linux Guides (Epic, Itch, Steam)](https://au-avengers.github.io/docs.toum.gg/docs/category/linux--steam-deck-install)
 - [**Mod Info**](https://au-avengers.github.io/docs.toum.gg/)
+- [**Draft Mode**](#draft-mode)
 - [**Credits & Resources**](https://github.com/AU-Avengers/TOU-Mira/wiki/Credits)
 - [**License**](#license)
 - [**Copyright**](#copyright)
@@ -233,6 +234,18 @@ An [Among Us](https://store.steampowered.com/app/945360/Among_Us) mod based on T
 | 16.0.5            | 1.0.2       | [Download](https://github.com/AU-Avengers/TOU-Mira/releases/tag/v1.0.2)      |
 | 16.0.5            | 1.0.1       | [Download](https://github.com/AU-Avengers/TOU-Mira/releases/tag/v1.0.1)      |
 | 16.0.5            | 1.0.0       | [Download](https://github.com/AU-Avengers/TOU-Mira/releases/tag/v1.0.0)      |
+
+# Draft Mode
+
+All players must use the same mod build and role extensions. The `1.7.10-dev` draft protocol is incompatible with earlier builds.
+
+- **Use Role List for Pool:** only the first N slots are active, where N is the number of non-spectator participants. Each slot supplies one role, not one copy of every alternative in its bucket. Accepted roles can be matched to overlapping buckets without changing anyone's chosen role.
+- **Manual pool:** total Impostors, total Neutrals and Neutral Killing are required weighted totals. Other subtype settings are ceilings. A double-draft role occupies one player slot but costs two quota units.
+- Offers, random picks, timeouts and shuffles share the same role counts, bucket matching, exclusions and target checks. An offer must leave a legal completion for everyone. Fewer legal roles means fewer cards, not off-list filler.
+- With concurrent picks, the first host-accepted choice consumes capacity. Conflicting offers are refreshed with at least five seconds left. Shuffle uses are acknowledged by the host. Hidden sidebar confirmations cannot erase the picker's known role.
+- Impossible configurations cancel with a host diagnostic instead of relaxing quotas or replacing picks. The feasibility search is bounded; if its limit is reached, narrow buckets or reduce exclusions and retry.
+- Executioner, Fairy, Crewpostor and Lovers require eligible targets or pairs. **Crewpostor Replaces Impostor** is incompatible with draft while Crewpostor chance is nonzero, because it rewrites a committed role.
+- Disconnects remove that participant and revalidate the remaining active buckets. If accepted picks no longer fit, the draft cancels. Host changes cancel the session. Completed picks stay bound to player IDs, connection owners and the draft session through recap and the native countdown; roster or incompatible setting changes cancel startup.
 
 -----------------------
 

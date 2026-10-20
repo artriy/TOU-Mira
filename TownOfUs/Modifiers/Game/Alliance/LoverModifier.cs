@@ -11,6 +11,7 @@ using Reactor.Utilities;
 using TownOfUs.GameOver;
 using TownOfUs.Interfaces;
 using TownOfUs.Modifiers.Neutral;
+using TownOfUs.Modules.DraftMode;
 using TownOfUs.Options;
 using TownOfUs.Options.Modifiers;
 using TownOfUs.Options.Modifiers.Alliance;
@@ -85,74 +86,33 @@ public sealed class LoverModifier : AllianceGameModifier, IWikiDiscoverable, IAs
             lover.RpcRemoveModifier<LoverModifier>();
         }
 
-        Random rnd = new();
-        var chance = rnd.Next(1, 101);
+        Random random = new();
+        if (random.Next(100) >= (int)OptionGroupSingleton<AllianceModifierOptions>.Instance.LoversChance.Value) return;
 
-        if (chance <= (int)OptionGroupSingleton<AllianceModifierOptions>.Instance.LoversChance.Value)
+        var loveOpt = OptionGroupSingleton<LoversOptions>.Instance;
+        var players = PlayerControl.AllPlayerControls.ToArray()
+            .Where(x => !x.HasDied() && !x.Data.Disconnected &&
+                !x.HasModifier<ExecutionerTargetModifier>() && !x.HasModifier<AllianceGameModifier>() &&
+                !SpectatorRole.TrackedSpectators.Contains(x.PlayerId) &&
+                (x.Data.Role is not IUnlovable unlovable || !unlovable.IsUnlovable) &&
+                (loveOpt.NeutralLovers || !x.IsNeutral())).ToList();
+        var killers = players.Where(x => x.IsImpostor() ||
+            loveOpt.NeutralLovers && x.Is(RoleAlignment.NeutralKilling)).ToList();
+        var nonKillers = players.Except(killers).ToList();
+        var killerPercent = (int)loveOpt.LovingImpPercent;
+        if (!DraftStartupRules.TryChooseLoverFactions(nonKillers.Count, killers.Count, killerPercent,
+                random.Next(100), out var mixedPair))
         {
-            var loveOpt = OptionGroupSingleton<LoversOptions>.Instance;
-            var impTargetPercent = (int)loveOpt.LovingImpPercent;
-
-            var players = PlayerControl.AllPlayerControls.ToArray()
-                .Where(x => !x.HasDied() && !x.HasModifier<ExecutionerTargetModifier>() &&
-                            !x.HasModifier<AllianceGameModifier>() &&
-                            !SpectatorRole.TrackedSpectators.Contains(x.Data.PlayerName) &&
-                            (x.Data.Role is not IUnlovable unlovable || !unlovable.IsUnlovable) && (loveOpt.NeutralLovers || !x.IsNeutral())).ToList();
-            players.Shuffle();
-
-            Random rndIndex1 = new();
-            var randomLover = players[rndIndex1.Next(0, players.Count)];
-            players.Remove(randomLover);
-
-            var crewmates = new List<PlayerControl>();
-            var impostors = new List<PlayerControl>();
-
-            foreach (var player in players.SelectMany(_ => players))
-            {
-                if (player.IsImpostor() || (player.Is(RoleAlignment.NeutralKilling) &&
-                                            loveOpt.NeutralLovers))
-                {
-                    impostors.Add(player);
-                }
-                else if (player.Is(ModdedRoleTeams.Crewmate) ||
-                         ((player.Is(RoleAlignment.NeutralBenign) || player.Is(RoleAlignment.NeutralEvil) || player.Is(RoleAlignment.NeutralOutlier)) &&
-                          loveOpt.NeutralLovers))
-                {
-                    crewmates.Add(player);
-                }
-            }
-
-            if (crewmates.Count < 2 || impostors.Count < 1)
-            {
-                Error("Not enough players to select lovers");
-                return;
-            }
-
-            if (randomLover.IsImpostor())
-            {
-                impostors = impostors.Where(player => !player.IsImpostor()).ToList();
-                players = players.Where(player => !player.IsImpostor()).ToList();
-            }
-
-            if (impTargetPercent > 0f)
-            {
-                Random rnd2 = new();
-                var chance2 = rnd2.Next(0, 100);
-
-                if (chance2 < impTargetPercent)
-                {
-                    players = impostors;
-                }
-            }
+            if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft)
+                DraftApplier.Abort("Draft cancelled: Lovers cannot form a distinct pair with Killer Probability and Neutral Lovers. Change the role list or Lovers options.");
             else
-            {
-                players = crewmates;
-            }
-
-            Random rndIndex = new();
-            var randomTarget = players[rndIndex.Next(0, players.Count)];
-            RpcSetOtherLover(randomLover, randomTarget);
+                Error("Lovers cannot form a distinct pair with the configured factions.");
+            return;
         }
+        var first = nonKillers[random.Next(nonKillers.Count)];
+        nonKillers.Remove(first);
+        var partners = mixedPair ? killers : nonKillers;
+        RpcSetOtherLover(first, partners[random.Next(partners.Count)]);
     }
 
     public List<CustomButtonWikiDescription> Abilities { get; } = [];
@@ -190,56 +150,24 @@ public sealed class LoverModifier : AllianceGameModifier, IWikiDiscoverable, IAs
     private static IEnumerator SetTutorialTarget(LoverModifier loverMod, PlayerControl localPlr)
     {
         yield return new WaitForSeconds(0.01f);
-        var impTargetPercent = (int)OptionGroupSingleton<LoversOptions>.Instance.LovingImpPercent;
-
+        var options = OptionGroupSingleton<LoversOptions>.Instance;
         var players = PlayerControl.AllPlayerControls.ToArray()
-            .Where(x => !x.HasDied() && !x.HasModifier<ExecutionerTargetModifier>() &&
-                        (x.Data.Role is not IUnlovable unlovable || !unlovable.IsUnlovable)).ToList();
-        players.Shuffle();
-
-        players.Remove(localPlr);
-
-        var crewmates = new List<PlayerControl>();
-        var impostors = new List<PlayerControl>();
-
-        foreach (var player in players.SelectMany(_ => players))
+            .Where(x => x != localPlr && !x.HasDied() && !x.Data.Disconnected &&
+                !x.HasModifier<ExecutionerTargetModifier>() && !x.HasModifier<AllianceGameModifier>() &&
+                (x.Data.Role is not IUnlovable unlovable || !unlovable.IsUnlovable) &&
+                (options.NeutralLovers || !x.IsNeutral())).ToList();
+        var localKiller = localPlr.IsImpostor() || options.NeutralLovers && localPlr.Is(RoleAlignment.NeutralKilling);
+        var killers = players.Where(x => x.IsImpostor() ||
+            options.NeutralLovers && x.Is(RoleAlignment.NeutralKilling)).ToList();
+        var nonKillers = players.Except(killers).ToList();
+        Random random = new();
+        var partners = !localKiller && random.Next(100) < (int)options.LovingImpPercent ? killers : nonKillers;
+        if (partners.Count == 0)
         {
-            if (player.IsImpostor() || (player.Is(RoleAlignment.NeutralKilling) &&
-                                        OptionGroupSingleton<LoversOptions>.Instance.NeutralLovers))
-            {
-                impostors.Add(player);
-            }
-            else if (player.Is(ModdedRoleTeams.Crewmate) ||
-                     ((player.Is(RoleAlignment.NeutralBenign) || player.Is(RoleAlignment.NeutralEvil) || player.Is(RoleAlignment.NeutralOutlier)) &&
-                      OptionGroupSingleton<LoversOptions>.Instance.NeutralLovers))
-            {
-                crewmates.Add(player);
-            }
+            Error("Tutorial Lovers have no eligible partner.");
+            yield break;
         }
-
-        if (localPlr.IsImpostor())
-        {
-            impostors = impostors.Where(player => !player.IsImpostor()).ToList();
-            players = players.Where(player => !player.IsImpostor()).ToList();
-        }
-
-        if (impTargetPercent > 0f && impostors.Count != 0)
-        {
-            Random rnd = new();
-            var chance2 = rnd.Next(1, 101);
-
-            if (chance2 <= impTargetPercent)
-            {
-                players = impostors;
-            }
-        }
-        else
-        {
-            players = crewmates;
-        }
-
-        Random rndIndex = new();
-        var randomTarget = players[rndIndex.Next(0, players.Count)];
+        var randomTarget = partners[random.Next(partners.Count)];
 
         var sourceModifier = randomTarget.AddModifier<LoverModifier>();
         yield return new WaitForSeconds(0.01f);

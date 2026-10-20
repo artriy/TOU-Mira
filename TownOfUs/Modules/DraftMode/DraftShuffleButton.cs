@@ -5,7 +5,6 @@ using MiraAPI.GameOptions;
 using MiraAPI.Hud;
 using TownOfUs.Buttons;
 using UnityEngine;
-using HarmonyLib;
 
 
 namespace TownOfUs.Modules.DraftMode;
@@ -55,47 +54,15 @@ public sealed class DraftShuffleButton : TownOfUsButton
     public override bool CanUse()
     {
         var state = DraftManager.GetStateForPlayer(PlayerControl.LocalPlayer.PlayerId);
-        return state != null && state.IsPickingNow && DraftManager.IsDraftActive && !Disabled && MaxUses > 0 && UsesLeft>0;
+        return state != null && state.IsPickingNow && !state.HasPicked && !state.IsWithdrawn &&
+               DraftScreenController.Instance != null && DraftScreenController.Instance.CanRequestShuffle &&
+               DraftManager.IsDraftActive && !Disabled && MaxUses > 0 && UsesLeft > 0;
     }
 
     protected override void OnClick()
     {
         if (!DraftManager.IsDraftActive) return;
-        Helpers.CreateAndShowNotification(MiraLocaleManager.Get("TouDraftShuffledNotif", "Your picks have been Shuffled!"), Color.white,
-                new Vector3(0f, 1f, -80f), spr: TouImpAssets.TraitorSelect.LoadAsset());
-        DraftNetworkHelper.RequestShuffle();    
-        }
-
-    [HarmonyPatch(typeof(DraftRpcs), nameof(DraftRpcs.RpcStartDraft))]
-    public static class ShowDraftShuffleButtonOnDraftStart
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            Show();
-            CustomButtonSingleton<DraftShuffleButton>.Instance.SetUses((int)OptionGroupSingleton<RoleOptions>.Instance.ShufflesPerPlayer.Value);
-        }
+        DraftNetworkHelper.RequestShuffle();
     }
 
-
-    [HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastRecap))]
-    public static class HideDraftShuffle
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            DraftShuffleButton.HideAndReset();
-        }
-    }
-
-
-    [HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastCancelDraft))]
-    public static class HideDraftShuffleOnCancelDraft
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            DraftShuffleButton.HideAndReset();
-        }
-    }
 }

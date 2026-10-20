@@ -1,0 +1,58 @@
+name: Open draft repair PR
+
+on:
+  push:
+    branches: [fix/draft-mode-integrity]
+    paths: [.github/workflows/open-draft-repair-pr.yml]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: open-draft-repair-pr
+  cancel-in-progress: false
+
+jobs:
+  open-pr:
+    if: github.repository == 'artriy/TOU-Mira'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open PR against this fork only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing="$(gh pr list --repo artriy/TOU-Mira --base dev --head fix/draft-mode-integrity --state open --json url --jq '.[0].url // empty')"
+          if [ -n "$existing" ]; then
+            printf '%s\n' "$existing"
+            exit 0
+          fi
+          body="$(cat <<'BODY'
+          ## Changes
+          - Preserve known picks when hidden confirmations redact the public role ID.
+          - Conserve active role-list buckets, role amounts, weighted quotas and symmetric exclusions with one completion solver for every assignment path.
+          - Reserve quota for accepted copies and share the search budget across offer candidates, avoiding the broad-pool backtracking stall.
+          - Scope RPCs and UI callbacks to host, session, turn and offer revision; revalidate concurrent choices and acknowledge shuffle budgets.
+          - Bind completed choices to player IDs and connection owners through recap and the real native countdown. Cancel stale, changed or infeasible startup rather than running the ordinary allocator.
+          - Validate Executioner/Fairy/Crewpostor targets and distinct Lovers pairs. Reject Crewpostor replacement settings that rewrite chosen roles.
+          - Track spectators by player ID, remove obsolete draft protocol paths, add behavioral regression coverage and document changed contracts.
+          - Bump to 1.7.10-dev because the draft wire protocol changed; all clients must use the same build.
+
+          ## Verification
+          - Release solution build and final plugin build.
+          - 53 behavioral regression tests passed, including an exhaustive small-draft oracle and a bounded 15-player/75-role pool.
+          - 17 source-linked host coroutine/startup scenarios passed with controlled game/RPC boundaries: concurrency, stale choices, shuffle limits, random picks, timeouts, disconnects, host changes, recap cancellation and native-countdown roster/settings invalidation.
+          - The 15-player/75-role source-host run completed in 235 ms on this workstation.
+
+          Live-game limitation: the installed runtime's Reactor dependency fails with a missing InnerNetClient._HandleGameDataInner_d__165 type before Town of Us loads. Unity rendering and real multiplayer transport are not claimed verified.
+
+          Base and head are both in artriy/TOU-Mira. No upstream PR or upstream branch changes.
+          BODY
+          )"
+          gh api --method POST repos/artriy/TOU-Mira/pulls \
+            --raw-field title='fix draft mode' \
+            --raw-field base=dev \
+            --raw-field head=fix/draft-mode-integrity \
+            --raw-field body="$body" \
+            --jq '.html_url'

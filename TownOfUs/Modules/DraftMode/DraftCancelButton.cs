@@ -1,5 +1,4 @@
 using MiraAPI.Hud;
-using HarmonyLib;
 using TownOfUs.Buttons;
 using UnityEngine;
 
@@ -45,50 +44,7 @@ public sealed class DraftCancelButton : TownOfUsButton
         if (!AmongUsClient.Instance.AmHost) return;
         if (!DraftManager.IsDraftActive) return;
         DraftEngineBehaviour.Instance?.CancelDraft();
-        DraftRpcs.RpcCreateNotif(PlayerControl.LocalPlayer, MiraLocaleManager.Get("TouDraftCancelledNotif", "Draft Mode has been cancelled by the <color=#FFBFCC><b>Host</b></color>!"));
         Hide();
     }
 }
 
-[HarmonyPatch(typeof(DraftRpcs), nameof(DraftRpcs.RpcStartDraft))]
-public static class ShowCancelButtonOnDraftStart
-{
-    [HarmonyPostfix]
-    public static void Postfix()
-    {
-        DraftCancelButton.Show();
-    }
-}
-
-[HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastRecap))]
-public static class HideCancelButtonOnRecap
-{
-    [HarmonyPostfix]
-    public static void Postfix()
-    {
-        DraftCancelButton.Hide();
-    }
-}
-
-[HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastCancelDraft))]
-public static class HideCancelButtonOnCancelDraft
-{
-    [HarmonyPostfix]
-    public static void Postfix()
-    {
-        DraftCancelButton.Hide();
-    }
-}
-
-[HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnPlayerLeft))]
-public static class ShowCancelButtonOnPlayerLeft
-{
-    [HarmonyPostfix]
-    public static void Postfix()
-    {
-        if (DraftManager.IsDraftActive && AmongUsClient.Instance != null && AmongUsClient.Instance.AmHost)
-        {
-            DraftCancelButton.Show();
-        }
-    }
-}

@@ -180,7 +180,7 @@ namespace TownOfUs.Modules.DraftMode
             string you    = isMe ? $"  <color=#8BD5F9><b>({MiraLocaleManager.Get("TouDraftYouLabel", "YOU")})</b></color>" : string.Empty;
             string numCol = isMe ? "#8BD5F9" : "#ffee00";
 
-            if (DraftManager.IsPlayerDisconnected(state.PlayerId))
+            if (state.IsWithdrawn || DraftManager.IsPlayerDisconnected(state.PlayerId))
             {
                 return $"<color={numCol}><b>{playerNumLabel}</b></color> <color=#FF5050>{MiraLocaleManager.Get("TouDraftDisconnectedLabel", "DISCONNECTED")}</color>{you}";
             }
@@ -255,11 +255,7 @@ namespace TownOfUs.Modules.DraftMode
         [HarmonyPostfix]
         public static void Postfix()
         {
-            if (!DraftManager.IsDraftActive) return;
-
-            DraftCancelButton.Hide();
-            DraftShuffleButton.HideAndReset();
-            DraftSidebarManager.Deactivate();
+            DraftManager.LeaveLobby();
         }
     }
 }

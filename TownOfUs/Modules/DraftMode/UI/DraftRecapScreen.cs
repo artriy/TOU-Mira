@@ -18,6 +18,7 @@ namespace TownOfUs.Modules.DraftMode
 
         private static DraftRecapScreen _instance;
         private Action _onComplete;
+        private IEnumerator _displayCoroutine;
 
         private GameObject      _bgOverlay;
         private GameObject      _backdropArt;
@@ -46,7 +47,18 @@ namespace TownOfUs.Modules.DraftMode
             EnsureExists();
             _instance._onComplete = onComplete;
             _instance.BuildContent(entries, mode);
-            Coroutines.Start(_instance.CoDisplay());
+            _instance._displayCoroutine = Coroutines.Start(_instance.CoDisplay());
+        }
+
+        public static void Hide()
+        {
+            if (_instance == null) return;
+            var recap = _instance;
+            _instance = null!;
+            recap._onComplete = null!;
+            if (recap._displayCoroutine != null) Coroutines.Stop(recap._displayCoroutine);
+            recap.CleanupUI();
+            MiraAPI.Utilities.Extensions.DeepDestroy(recap.gameObject, true);
         }
 
         private void Awake()
@@ -311,6 +323,7 @@ namespace TownOfUs.Modules.DraftMode
 
             var callback = _onComplete;
             _onComplete = null!;
+            _displayCoroutine = null!;
 
             MiraAPI.Utilities.Extensions.DeepDestroy(gameObject, true);
             callback?.Invoke();

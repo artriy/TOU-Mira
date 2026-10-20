@@ -18,6 +18,7 @@ using TownOfUs.Modifiers;
 using TownOfUs.Modifiers.Game;
 using TownOfUs.Modifiers.Neutral;
 using TownOfUs.Modules;
+using TownOfUs.Modules.DraftMode;
 using TownOfUs.Options;
 using TownOfUs.Options.Roles.Neutral;
 using TownOfUs.Roles.Crewmate;
@@ -58,35 +59,40 @@ public sealed class FairyRole(IntPtr cppPtr) : NeutralRole(cppPtr), ITownOfUsRol
         var evilTargetPercent = (int)OptionGroupSingleton<FairyOptions>.Instance.EvilTargetPercent;
 
         var gas = PlayerControl.AllPlayerControls.ToArray()
-            .Where(x => x.IsRole<FairyRole>() && !x.HasDied());
+            .Where(x => x.IsRole<FairyRole>() && !x.HasDied() && !x.Data.Disconnected &&
+                x.GetRole<FairyRole>()!.Target == null);
 
         foreach (var ga in gas)
         {
             var filtered = PlayerControl.AllPlayerControls.ToArray()
                 .Where(x => !x.IsRole<FairyRole>() && !x.Is(RoleAlignment.NeutralOutlier) && !x.HasDied() &&
-                            !x.HasModifier<ExecutionerTargetModifier>() && !x.HasModifier<AllianceGameModifier>() &&
-                            !SpectatorRole.TrackedSpectators.Contains(x.Data.PlayerName))
+                            !x.Data.Disconnected && !x.HasModifier<ExecutionerTargetModifier>() &&
+                            !x.HasModifier<AllianceGameModifier>() && !x.Is(RoleAlignment.NeutralEvil) &&
+                            !SpectatorRole.TrackedSpectators.Contains(x.PlayerId))
                 .ToList();
 
-            if (evilTargetPercent > 0f)
+            if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft &&
+                PlayerControl.AllPlayerControls.ToArray().Any(x => x.IsRole<ExecutionerRole>() && !x.HasDied()))
             {
-                Random rnd = new();
-                var chance = rnd.Next(1, 101);
-
-                if (chance <= evilTargetPercent)
-                {
-                    filtered = [.. filtered.Where(x => x.IsImpostorAligned() || x.Is(RoleAlignment.NeutralKilling))];
-                }
+                var exeTargets = filtered.Where(x => DraftApplier.IsExecutionerTarget(x.Data.Role)).ToList();
+                var reserved = exeTargets.FirstOrDefault();
+                if (reserved != null) filtered.Remove(reserved);
             }
-            else
+            var crew = filtered.Where(x => x.Is(ModdedRoleTeams.Crewmate)).ToList();
+            var evil = filtered.Where(x => x.IsImpostorAligned() || x.Is(RoleAlignment.NeutralKilling)).ToList();
+            Random random = new();
+            var candidates = random.Next(100) < evilTargetPercent ? evil : crew;
+            if (candidates.Count == 0 && evilTargetPercent > 0 && evilTargetPercent < 100)
+                candidates = crew.Count > 0 ? crew : evil;
+            if (candidates.Count == 0)
             {
-                filtered = [.. filtered.Where(x => x.Is(ModdedRoleTeams.Crewmate))];
+                if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft)
+                    DraftApplier.Abort("Draft cancelled: Fairy has no eligible target. Change the role list or Evil Target Percent.");
+                else
+                    Error("Fairy has no eligible target.");
+                return;
             }
-
-            filtered = [.. filtered.Where(x => !x.Is(RoleAlignment.NeutralEvil))];
-
-            Random rndIndex = new();
-            var randomTarget = filtered[rndIndex.Next(0, filtered.Count)];
+            var randomTarget = candidates[random.Next(candidates.Count)];
 
             var textlogtarget = $"Setting Fairy Target: {randomTarget.Data.PlayerName}";
             MiscUtils.LogInfo(TownOfUsEventHandlers.LogLevel.Info, textlogtarget);
