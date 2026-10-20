@@ -901,15 +901,11 @@ public static class TownOfUsEventHandlers
             yield break;
         }
 
-        var fakeDictionary = new Dictionary<byte, string>();
-        byte specByte = 0;
-        foreach (var name in SpectatorRole.TrackedSpectators)
-        {
-            fakeDictionary.Add(specByte, name);
-            specByte++;
-        }
+        var spectators = PlayerControl.AllPlayerControls.ToArray()
+            .Where(player => SpectatorRole.TrackedSpectators.Contains(player.PlayerId))
+            .ToDictionary(player => player.PlayerId, player => player.Data.PlayerName);
 
-        Rpc<SetSpectatorListRpc>.Instance.Send(PlayerControl.LocalPlayer, fakeDictionary);
+        Rpc<SetSpectatorListRpc>.Instance.Send(PlayerControl.LocalPlayer, spectators);
     }
 
     private static readonly HashSet<int> RulesShownToClientIds = [];

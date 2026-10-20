@@ -15,6 +15,7 @@ using TownOfUs.Modifiers;
 using TownOfUs.Modifiers.Game;
 using TownOfUs.Modifiers.Game.Universal;
 using TownOfUs.Modifiers.Neutral;
+using TownOfUs.Modules.DraftMode;
 using TownOfUs.Options;
 using TownOfUs.Options.Roles.Neutral;
 using TownOfUs.Roles.Crewmate;
@@ -78,26 +79,34 @@ public sealed class ExecutionerRole(IntPtr cppPtr) : NeutralRole(cppPtr), ITownO
 
         // Error($"SelectExeTargets");
         var exes = PlayerControl.AllPlayerControls.ToArray()
-            .Where(x => x.IsRole<ExecutionerRole>() && !x.HasDied());
+            .Where(x => x.IsRole<ExecutionerRole>() && !x.HasDied() && !x.Data.Disconnected &&
+                x.GetRole<ExecutionerRole>()!.Target == null);
 
         foreach (var exe in exes)
         {
             var filtered = PlayerControl.AllPlayerControls.ToArray()
-                .Where(x => !x.IsRole<ExecutionerRole>() && !x.HasDied() &&
+                .Where(x => !x.IsRole<ExecutionerRole>() && !x.HasDied() && !x.Data.Disconnected &&
                             x.Is(ModdedRoleTeams.Crewmate) &&
                             !x.HasModifier<GuardianAngelTargetModifier>() &&
                             !x.HasModifier<AllianceGameModifier>() &&
                             !x.Is(RoleAlignment.CrewmatePower) &&
                             x.Data.Role is not VigilanteRole &&
-                            !SpectatorRole.TrackedSpectators.Contains(x.Data.PlayerName)).ToList();
+                            !SpectatorRole.TrackedSpectators.Contains(x.PlayerId)).ToList();
 
             if (filtered.Count > 0)
             {
                 // filtered.ForEach(x => Error($"EXE Possible Target: {x.Data.PlayerName}"));
                 Random rndIndex = new();
-                var randomTarget = filtered[rndIndex.Next(0, filtered.Count)];
+                var randomTarget = OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft
+                    ? filtered.FirstOrDefault(x => x.HasModifier<ExecutionerTargetModifier>()) ?? filtered[rndIndex.Next(filtered.Count)]
+                    : filtered[rndIndex.Next(filtered.Count)];
 
                 RpcSetExeTarget(exe, randomTarget);
+            }
+            else if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft)
+            {
+                DraftApplier.Abort("Draft cancelled: Executioner has no eligible target. Add an eligible crewmate or change target/modifier options.");
+                return;
             }
             else
             {

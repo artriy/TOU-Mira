@@ -3,6 +3,7 @@ using Reactor.Networking.Attributes;
 using Reactor.Networking.Rpc;
 using TownOfUs.Patches.Misc;
 using TownOfUs.Roles.Other;
+using TownOfUs.Modules.DraftMode;
 
 namespace TownOfUs.Networking;
 
@@ -44,6 +45,9 @@ public sealed class SetSpectatorListRpc(TownOfUsPlugin plugin, uint id)
 
     public override void Handle(PlayerControl innerNetObject, Dictionary<byte, string>? data)
     {
+        if (innerNetObject == null || AmongUsClient.Instance == null ||
+            innerNetObject.OwnerId != AmongUsClient.Instance.HostId ||
+            DraftManager.IsDraftActive || DraftApplier.HasPendingDraft) return;
         if (data == null)
         {
             return;

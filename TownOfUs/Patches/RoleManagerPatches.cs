@@ -12,6 +12,8 @@ using Reactor.Utilities;
 using TownOfUs.Events;
 using TownOfUs.Events.TouEvents;
 using TownOfUs.Modifiers;
+using TownOfUs.Modifiers.Game.Alliance;
+using TownOfUs.Modules.DraftMode;
 using TownOfUs.Options;
 using TownOfUs.Roles;
 using TownOfUs.Roles.Crewmate;
@@ -32,6 +34,7 @@ public static class TouRoleManagerPatches
     public static bool ReplaceRoleManager;
     public static HashSet<ushort> VanillaExclusions { get; private set; } = [];
     private static List<int> LastImps { get; set; } = [];
+    private static bool _draftSelectionFailed;
 
     private static void GhostRoleSetup()
     {
@@ -880,6 +883,14 @@ public static class TouRoleManagerPatches
     public static IEnumerator CoAssignTargets()
     {
         yield return null;
+        var isDraft = OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft;
+        var crewpostor = isDraft ? MiscUtils.AssignableTargetModifiers.OfType<CrewpostorModifier>().FirstOrDefault() : null;
+        if (crewpostor != null)
+        {
+            crewpostor.AssignTargets();
+            if (DraftApplier.StartupFailed && OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft) yield break;
+            yield return new WaitForSeconds(0.01f);
+        }
 
         foreach (var role in MiscUtils.SpawnableRoles.Where(x => x is IAssignableTargets)
                      .OrderBy(x => (x as IAssignableTargets)!.Priority))
@@ -887,14 +898,16 @@ public static class TouRoleManagerPatches
             if (role is IAssignableTargets assignRole)
             {
                 assignRole.AssignTargets();
+                if (DraftApplier.StartupFailed && OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft) yield break;
                 yield return new WaitForSeconds(0.01f);
             }
         }
 
         foreach (var assignMod in MiscUtils.AssignableTargetModifiers
-                     .OrderBy(x => x.Priority))
+                     .Where(mod => !isDraft || mod is not CrewpostorModifier).OrderBy(x => x.Priority))
         {
             assignMod.AssignTargets();
+            if (DraftApplier.StartupFailed && OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft) yield break;
             yield return new WaitForSeconds(0.01f);
         }
 
@@ -911,6 +924,7 @@ public static class TouRoleManagerPatches
     public static bool SelectRolesPatch(RoleManager __instance)
     {
         var assignmentType = (RoleSelectionMode)OptionGroupSingleton<RoleOptions>.Instance.RoleAssignmentType.Value;
+        _draftSelectionFailed = false;
         Error($"RoleManager.SelectRoles - ReplaceRoleManager: {ReplaceRoleManager} | Assignment type is set to {assignmentType.ToDisplayString()}!");
         GameManager.Instance.LogicOptions.SyncOptions();
         ModifierManager.MiraAssignsModifiers = false;
@@ -931,11 +945,24 @@ public static class TouRoleManagerPatches
 
             return true;
         }
+        if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft)
+        {
+            if (!DraftApplier.TryApplyPending(out var reason))
+            {
+                _draftSelectionFailed = true;
+                DraftApplier.Abort(reason);
+            }
+            else
+            {
+                DraftEngineBehaviour.Instance?.CompletePendingStart();
+            }
+            return false;
+        }
 
         var random = new System.Random();
 
         var players = GameData.Instance.AllPlayers.ToArray()
-            .Excluding(x => SpectatorRole.TrackedSpectators.Contains(x.PlayerName)).ToList();
+            .Excluding(x => SpectatorRole.TrackedSpectators.Contains(x.PlayerId)).ToList();
         players.Shuffle();
 
         var impCount = GameOptionsManager.Instance.CurrentGameOptions.GetAdjustedNumImpostors(players.Count);
@@ -1026,26 +1053,7 @@ public static class TouRoleManagerPatches
             }
         }
 
-        var distrib = OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution();
-        if (distrib is RoleDistribution.Draft && TownOfUs.Modules.DraftMode.DraftApplier.PendingDraftStates.Count > 0)
-        {
-            var draftedPlayers = TownOfUs.Modules.DraftMode.DraftApplier.PendingDraftStates
-                .Select(state => state.PlayerId)
-                .ToHashSet();
-            TownOfUs.Modules.DraftMode.DraftApplier.ApplyDraftResults(TownOfUs.Modules.DraftMode.DraftApplier.PendingDraftStates);
-            TownOfUs.Modules.DraftMode.DraftApplier.PendingDraftStates.Clear();
-
-            foreach (var p in PlayerControl.AllPlayerControls)
-            {
-                if (p == null || p.Data == null || p.Data.Disconnected) continue;
-                if (draftedPlayers.Contains(p.PlayerId)) continue;
-                if (p.Data.Role == null || p.Data.Role.Role == 0)
-                {
-                    p.RpcSetRole(RoleTypes.Crewmate);
-                }
-            }
-        }
-        else if (assignmentType is RoleSelectionMode.RoleList)
+        if (assignmentType is RoleSelectionMode.RoleList)
         {
             AssignRolesFromRoleList(infected);
         }
@@ -1069,8 +1077,9 @@ public static class TouRoleManagerPatches
     [HarmonyPriority(Priority.Low)]
     public static void SetSpectatorsAndModifiers(RoleManager __instance)
     {
+        if (_draftSelectionFailed) return;
         var spectators = GameData.Instance.AllPlayers.ToArray()
-            .Where(x => SpectatorRole.TrackedSpectators.Contains(x.PlayerName)).ToList();
+            .Where(x => SpectatorRole.TrackedSpectators.Contains(x.PlayerId)).ToList();
         var specId = (RoleTypes)RoleId.Get<SpectatorRole>();
 
         foreach (var player in spectators)

@@ -40,11 +40,12 @@ namespace TownOfUs.Modules.DraftMode
                 var separators = new[] { '|', ';', ',' };
                 if (bucket.IndexOfAny(separators) >= 0)
                 {
-                    result = bucket.Split(separators, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+                    result = bucket.Split(separators, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim())
+                        .Where(IsRoleUsableAndEnabled).ToList();
                 }
                 else
                 {
-                    result = new List<string> { bucket };
+                    result = new List<string>();
                 }
             }
 
@@ -70,18 +71,6 @@ namespace TownOfUs.Modules.DraftMode
         private static string RoleIdKey(RoleBehaviour role) =>
             ((ushort)role.Role).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        public static ushort ChooseRepresentativeRoleId(List<string> roleNames)
-        {
-            if (roleNames == null || roleNames.Count == 0) return 0;
-
-            foreach (var nm in roleNames)
-            {
-                var resolvedId = ResolveRoleIdFromName(nm);
-                if (resolvedId != 0) return resolvedId;
-            }
-
-            return 0;
-        }
 
         public static string GetRoleNameFromId(ushort id)
         {
@@ -104,22 +93,11 @@ namespace TownOfUs.Modules.DraftMode
                     if (role == null) continue;
 
                     var name = RoleIdKey(role);
-                    int count = Math.Max(1, GetRoleCount(role));
-                    for (int i = 0; i < count; i++)
-                    {
-                        names.Add(name);
-                    }
-                }
-
-                UnityRng rng = new();
-                for (int i = names.Count - 1; i > 0; i--)
-                {
-                    int j = rng.NextInt(i + 1);
-                    (names[i], names[j]) = (names[j], names[i]);
+                    names.Add(name);
                 }
 
                 resolvedNames = TrimEmptyNames(names);
-                return resolvedNames.Count > 0;
+                return true;
             }
 
             var directRole = FindRoleByName(bucket);
@@ -134,11 +112,6 @@ namespace TownOfUs.Modules.DraftMode
             return resolvedNames.Count > 0;
         }
 
-        public static int GetMaxCountForRoleName(string name)
-        {
-            var role = FindRoleByName(name);
-            return role != null ? Math.Max(1, GetRoleCount(role)) : int.MaxValue;
-        }
 
         public static bool IsImpostorRoleName(string name)
         {
@@ -146,11 +119,6 @@ namespace TownOfUs.Modules.DraftMode
             return role != null && IsImpostorRole(role);
         }
 
-        public static bool IsImpostorRoleId(ushort id)
-        {
-            var role = MiscUtils.GetRegisteredRole((RoleTypes)id);
-            return role != null && IsImpostorRole(role);
-        }
 
         public static bool IsImpostorRole(RoleBehaviour role)
         {
@@ -168,11 +136,6 @@ namespace TownOfUs.Modules.DraftMode
             return role.TeamType == RoleTeamTypes.Impostor;
         }
 
-        public static bool IsDoubleDraftRoleName(string name)
-        {
-            var role = FindRoleByName(name);
-            return IsDoubleDraftRole(role);
-        }
 
         public static bool IsDoubleDraftRoleId(ushort id)
         {
@@ -193,11 +156,6 @@ namespace TownOfUs.Modules.DraftMode
                    roleType.Assembly.GetName().Name?.Contains("Divani", StringComparison.OrdinalIgnoreCase) == true;
         }
 
-        public static RoleAlignment? GetRoleAlignment(string name)
-        {
-            var role = FindRoleByName(name);
-            return role is ITownOfUsRole touRole ? touRole.RoleAlignment : null;
-        }
 
         public static bool IsNeutralRoleName(string name)
         {
@@ -211,30 +169,7 @@ namespace TownOfUs.Modules.DraftMode
             return role != null && role.IsNeutral();
         }
 
-        public static bool IsImpostorRoleListOption(RoleListOption opt) => opt switch
-        {
-            RoleListOption.ImpConceal or
-            RoleListOption.ImpKilling or
-            RoleListOption.ImpPower or
-            RoleListOption.ImpSupport or
-            RoleListOption.ImpCommon or
-            RoleListOption.ImpSpecial or
-            RoleListOption.ImpRandom => true,
-            _ => false
-        };
 
-        public static bool IsNeutralRoleListOption(RoleListOption opt) => opt switch
-        {
-            RoleListOption.NeutBenign or
-            RoleListOption.NeutEvil or
-            RoleListOption.NeutKilling or
-            RoleListOption.NeutOutlier or
-            RoleListOption.NeutCommon or
-            RoleListOption.NeutSpecial or
-            RoleListOption.NeutWildcard or
-            RoleListOption.NeutRandom => true,
-            _ => false
-        };
 
 
         private static RoleBehaviour FindRoleByName(string name)
@@ -255,6 +190,7 @@ namespace TownOfUs.Modules.DraftMode
         {
             roleListOption = default;
             if (string.IsNullOrWhiteSpace(bucket)) return false;
+            if (ushort.TryParse(BaseRoleName(bucket), out _)) return false;
 
             var normalizedBucket = NormalizeName(bucket);
             for (var i = 0; i < RoleOptions.OptionStrings?.Length; i++)
@@ -267,7 +203,8 @@ namespace TownOfUs.Modules.DraftMode
                 }
             }
 
-            return Enum.TryParse<RoleListOption>(bucket, true, out roleListOption);
+            return Enum.TryParse<RoleListOption>(bucket, true, out roleListOption) &&
+                Enum.IsDefined(typeof(RoleListOption), roleListOption);
         }
 
         private static List<string> TrimEmptyNames(IEnumerable<string> names)
@@ -411,12 +348,6 @@ namespace TownOfUs.Modules.DraftMode
             return chance;
         }
 
-        public static int GetChanceForRoleName(string name)
-        {
-            var role = FindRoleByName(name);
-            if (role == null) return 100;
-            return Math.Clamp(GetRoleChance(role), 1, 100);
-        }
 
         public static int GetRoleCount(RoleBehaviour role)
         {

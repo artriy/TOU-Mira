@@ -8,6 +8,7 @@ using TownOfUs.Events;
 using TownOfUs.Interfaces;
 using TownOfUs.Modifiers.Crewmate;
 using TownOfUs.Modifiers.Impostor;
+using TownOfUs.Modules.DraftMode;
 using TownOfUs.Modifiers.Neutral;
 using TownOfUs.Options;
 using TownOfUs.Options.Modifiers;
@@ -62,6 +63,12 @@ public sealed class CrewpostorModifier : AllianceGameModifier, IWikiDiscoverable
         {
             return;
         }
+        if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft &&
+            !DraftApplier.TryValidateConfiguration(out var reason))
+        {
+            DraftApplier.Abort(reason);
+            return;
+        }
 
         System.Random rnd = new();
         var chance = rnd.Next(1, 101);
@@ -72,25 +79,29 @@ public sealed class CrewpostorModifier : AllianceGameModifier, IWikiDiscoverable
             var filtered = PlayerControl.AllPlayerControls.ToArray()
                 .Where(x => x.IsCrewmate() &&
                             !x.HasDied() &&
-                            !SpectatorRole.TrackedSpectators.Contains(x.Data.PlayerName) &&
+                            !x.Data.Disconnected && !SpectatorRole.TrackedSpectators.Contains(x.PlayerId) &&
                             (x.Data.Role is not ILoyalCrewmate loyalCrew || loyalCrew.CanBeCrewpostor) &&
                             !x.HasModifier<AllianceGameModifier>() &&
                             !x.HasModifier<ExecutionerTargetModifier>()).ToList();
 
             if (filtered.Count == 0)
             {
+                if (OptionGroupSingleton<RoleOptions>.Instance.CurrentRoleDistribution() is RoleDistribution.Draft)
+                    DraftApplier.Abort("Draft cancelled: Crewpostor has no eligible crewmate. Change the role list or Crewpostor chance.");
                 return;
             }
 
             var randomTarget = filtered[rnd.Next(0, filtered.Count)];
 
             var imps = Helpers.GetAlivePlayers().Where(x => x.IsImpostor()).ToList();
-            if (OptionGroupSingleton<CrewpostorOptions>.Instance.CrewpostorReplacesImpostor.Value && imps.Count > 1)
+            var replaceableImps = imps.Where(x => x.Data.Role is not ISpawnChange).ToList();
+            if (OptionGroupSingleton<CrewpostorOptions>.Instance.CrewpostorReplacesImpostor.Value &&
+                imps.Count > 1 && replaceableImps.Count > 0)
             {
                 var textlognotfound = $"Replacing an impostor with a crewmate. Impostors: {imps.Count}.";
                 MiscUtils.LogInfo(TownOfUsEventHandlers.LogLevel.Error, textlognotfound);
-                var discardedImp = imps.Where(x => x.Data.Role is not ISpawnChange).Random();
-                var curAlignment = MiscUtils.GetRoleAlignment(discardedImp!.Data.Role);
+                var discardedImp = replaceableImps.Random()!;
+                var curAlignment = MiscUtils.GetRoleAlignment(discardedImp.Data.Role);
                 var crewAlignment = curAlignment switch
                 {
                     RoleAlignment.ImpostorConcealing => RoleAlignment.CrewmateInvestigative,

@@ -99,6 +99,7 @@ namespace TownOfUs.Modules.DraftMode
 
         public static void NotifyLocalPlayerPicked(ushort roleId)
         {
+            if (roleId == 0) return;
             EnsureExists();
             if (roleId != _instance._shownRoleId)
             {
@@ -398,6 +399,7 @@ namespace TownOfUs.Modules.DraftMode
 
         private void ShowRoleCard(ushort roleId)
         {
+            if (roleId == 0) return;
             DestroyRoleCardCore();
             if (!EnsureRolePrefab() || HudManager.Instance == null) return;
 
@@ -535,7 +537,7 @@ namespace TownOfUs.Modules.DraftMode
 
                     MatchInfoGuide.Instance.Open();
                     Coroutines.Start(TownOfUs.Modules.Components.WikiHyperlink.CoLoadAdvancedWiki(r, null));
-                    Coroutines.Start(CoWaitForGuideClosed());
+                    Coroutines.Start(CoWaitForGuideClosed(DraftManager.SessionId));
                     return;
                 }
 
@@ -553,7 +555,7 @@ namespace TownOfUs.Modules.DraftMode
                 wiki.Begin(null);
                 wiki.OpenFor(wikiTarget);
 
-                Coroutines.Start(CoWaitForWikiDestroyed(wiki));
+                Coroutines.Start(CoWaitForWikiDestroyed(wiki, DraftManager.SessionId));
             }
             catch (Exception ex)
             {
@@ -565,24 +567,26 @@ namespace TownOfUs.Modules.DraftMode
         }
 
         [HideFromIl2Cpp]
-        private IEnumerator CoWaitForWikiDestroyed(TownOfUs.Modules.Wiki.IngameWikiMinigame wiki)
+        private IEnumerator CoWaitForWikiDestroyed(TownOfUs.Modules.Wiki.IngameWikiMinigame wiki, string sessionId)
         {
-            while (wiki != null)
+            while (wiki != null && DraftManager.IsDraftActive && DraftManager.SessionId == sessionId)
                 yield return null;
 
-            RestoreCardAfterWiki();
+            if (DraftManager.IsDraftActive && DraftManager.SessionId == sessionId) RestoreCardAfterWiki();
         }
 
         [HideFromIl2Cpp]
-        private IEnumerator CoWaitForGuideClosed()
+        private IEnumerator CoWaitForGuideClosed(string sessionId)
         {
-            for (var i = 0; i < 30 && !(MatchInfoGuide.Instance != null && MatchInfoGuide.Instance.IsActive); i++)
+            for (var i = 0; i < 30 && DraftManager.IsDraftActive && DraftManager.SessionId == sessionId &&
+                 !(MatchInfoGuide.Instance != null && MatchInfoGuide.Instance.IsActive); i++)
                 yield return null;
 
-            while (MatchInfoGuide.Instance != null && MatchInfoGuide.Instance.IsActive)
+            while (DraftManager.IsDraftActive && DraftManager.SessionId == sessionId &&
+                   MatchInfoGuide.Instance != null && MatchInfoGuide.Instance.IsActive)
                 yield return null;
 
-            RestoreCardAfterWiki();
+            if (DraftManager.IsDraftActive && DraftManager.SessionId == sessionId) RestoreCardAfterWiki();
         }
 
         private void RestoreCardAfterWiki()
@@ -631,7 +635,9 @@ namespace TownOfUs.Modules.DraftMode
 
         public static void DestroyRoleCard()
         {
-            _instance?.DestroyRoleCardCore();
+            if (_instance == null) return;
+            _instance.DestroyRoleCardCore();
+            _instance._shownRoleId = null;
         }
 
         private void EnsureCardTooltip()
@@ -819,7 +825,7 @@ namespace TownOfUs.Modules.DraftMode
 
             string mySlotText = mySlot > 0 ? mySlot.ToString(CultureInfo.InvariantCulture) : "?";
             string mySlotLabelText = MiraLocaleManager.Get("TouDraftYourNumberLabel", "YOUR NUMBER:");
-            bool isSpectating = SpectatorRole.TrackedSpectators.Contains(PlayerControl.LocalPlayer.Data.PlayerName);
+            bool isSpectating = SpectatorRole.TrackedSpectators.Contains(PlayerControl.LocalPlayer.PlayerId);
             if (isSpectating)
             {
                 mySlotLabelText = MiraLocaleManager.Get("TouDraftYouAreLabel", "YOU ARE");

@@ -5,6 +5,8 @@ using Reactor.Networking.Attributes;
 using TownOfUs.Options;
 using TownOfUs.Options.Maps;
 using TownOfUs.Patches.PrefabChanging;
+using TownOfUs.Modules.DraftMode;
+using TownOfUs.Patches.DraftMode;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -149,6 +151,16 @@ internal static class CancelCountdownStart
     [HarmonyPrefix]
     public static void Prefix(GameStartManager __instance)
     {
+        if (DraftManager.IsDraftActive || DraftApplier.HasPendingDraft ||
+            DraftEngineBehaviour.Instance?.HasPendingStart == true)
+        {
+            GameStartPatch.ClearNativeStart();
+            if (AmongUsClient.Instance.AmHost)
+                DraftEngineBehaviour.Instance?.CancelDraft();
+            else
+                DraftManager.Reset(cancelledBeforeCompletion: true);
+            DraftApplier.ClearPendingDraftStates();
+        }
         if (__instance.startState is GameStartManager.StartingStates.Countdown)
         {
             SoundManager.Instance.StopSound(__instance.gameStartSound);

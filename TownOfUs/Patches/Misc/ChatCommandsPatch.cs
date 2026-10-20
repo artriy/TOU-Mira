@@ -110,12 +110,12 @@ public static class ChatPatches
                     MiscUtils.AddSystemChat(PlayerControl.LocalPlayer.Data, systemName,
                         MiraLocaleManager.Get("SpectatorStartError"));
                 }
-                else if (DraftManager.IsDraftActive)
+                else if (DraftManager.IsDraftActive || DraftApplier.HasPendingDraft)
                 {
                     MiscUtils.AddSystemChat(PlayerControl.LocalPlayer.Data, systemName,
                         MiraLocaleManager.Get("SpectatorDraftError"));
                 }
-                else if (SpectatorRole.TrackedSpectators.Contains(PlayerControl.LocalPlayer.Data.PlayerName))
+                else if (SpectatorRole.TrackedSpectators.Contains(PlayerControl.LocalPlayer.PlayerId))
                 {
                     MiscUtils.AddSystemChat(PlayerControl.LocalPlayer.Data, systemName,
                         MiraLocaleManager.Get("SpectatorToggleOff"));
@@ -423,7 +423,12 @@ public static class ChatPatches
             var msg = MiraLocaleManager.Get("SetNameLobbyError");
             if (LobbyBehaviour.Instance)
             {
-                if (textRegular.Length < 1 || textRegular.Length > 12)
+                if (DraftManager.IsDraftActive || DraftApplier.HasPendingDraft ||
+                    GameStartManager.InstanceExists && GameStartManager.Instance.startState == GameStartManager.StartingStates.Countdown)
+                {
+                    msg = "Names cannot change during draft or game-start countdown.";
+                }
+                else if (textRegular.Length < 1 || textRegular.Length > 12)
                 {
                     msg = MiraLocaleManager.Get("SetNameRequirementError");
                 }
@@ -866,14 +871,16 @@ public static class ChatPatches
     [MethodRpc((uint)TownOfUsRpc.SelectSpectator)]
     public static void RpcSelectSpectator(PlayerControl player)
     {
-        if (!OptionGroupSingleton<HostSpecificOptions>.Instance.EnableSpectators.Value)
+        if (!OptionGroupSingleton<HostSpecificOptions>.Instance.EnableSpectators.Value ||
+            DraftManager.IsDraftActive || DraftApplier.HasPendingDraft ||
+            GameStartManager.InstanceExists && GameStartManager.Instance.startState == GameStartManager.StartingStates.Countdown)
         {
             return;
         }
 
-        if (!SpectatorRole.TrackedSpectators.Contains(player.Data.PlayerName))
+        if (!SpectatorRole.TrackedSpectators.Contains(player.PlayerId))
         {
-            SpectatorRole.TrackedSpectators.Add(player.Data.PlayerName);
+            SpectatorRole.TrackedSpectators.Add(player.PlayerId);
         }
     }
 
@@ -881,9 +888,9 @@ public static class ChatPatches
     {
         SpectatorRole.TrackedSpectators.Clear();
 
-        foreach (var name in list.Select(x => x.Value))
+        foreach (var playerId in list.Keys)
         {
-            SpectatorRole.TrackedSpectators.Add(name);
+            SpectatorRole.TrackedSpectators.Add(playerId);
         }
     }
 
@@ -895,9 +902,11 @@ public static class ChatPatches
     [MethodRpc((uint)TownOfUsRpc.RemoveSpectator)]
     public static void RpcRemoveSpectator(PlayerControl player)
     {
-        if (SpectatorRole.TrackedSpectators.Contains(player.Data.PlayerName))
+        if (DraftManager.IsDraftActive || DraftApplier.HasPendingDraft ||
+            GameStartManager.InstanceExists && GameStartManager.Instance.startState == GameStartManager.StartingStates.Countdown) return;
+        if (SpectatorRole.TrackedSpectators.Contains(player.PlayerId))
         {
-            SpectatorRole.TrackedSpectators.Remove(player.Data.PlayerName);
+            SpectatorRole.TrackedSpectators.Remove(player.PlayerId);
         }
     }
     

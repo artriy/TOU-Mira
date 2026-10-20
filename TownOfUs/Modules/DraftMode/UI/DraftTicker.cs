@@ -42,8 +42,7 @@ namespace TownOfUs.Modules.DraftMode
 #pragma warning disable S2325, CA1822
         private void Update()
         {
-            if (!DraftManager.IsDraftActive) return;
-            DraftManager.TurnTimeLeft = Mathf.Max(0f, DraftManager.TurnTimeLeft - Time.deltaTime);
+            DraftManager.Tick(Time.deltaTime);
         }
 #pragma warning restore S2325, CA1822
     }
@@ -52,6 +51,13 @@ namespace TownOfUs.Modules.DraftMode
     {
         [HarmonyPostfix]
         public static void Postfix() => DraftTicker.DestroyIfExists();
+    }
+
+    [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.ExitGame))]
+    public static class DraftLeaveLobbyPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix() => DraftManager.LeaveLobby();
     }
 }
 
